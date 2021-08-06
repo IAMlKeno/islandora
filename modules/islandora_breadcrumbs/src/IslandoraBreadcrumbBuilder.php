@@ -41,7 +41,7 @@ class IslandoraBreadcrumbBuilder implements BreadcrumbBuilderInterface {
    */
   public function __construct(EntityTypeManagerInterface $entity_manager, ConfigFactoryInterface $config_factory) {
     $this->nodeStorage = $entity_manager->getStorage('node');
-    $this->config = $config_factory->get('islandora.breadcrumbs');
+    $this->config = $config_factory->get('islandora_breadcrumbs.breadcrumbs');
   }
 
   /**
@@ -54,7 +54,7 @@ class IslandoraBreadcrumbBuilder implements BreadcrumbBuilderInterface {
     $nid = $attributes->getRawParameters()->get('node');
     if (!empty($nid)) {
       $node = $this->nodeStorage->load($nid);
-      return (!empty($node) && $node->hasField($this->config->get('referenceField')) && !$node->get($this->config->get('referenceField'))->isEmpty());
+      return (!empty($node) && $node->hasField($this->config->get('referenceField')));
     }
   }
 
@@ -107,7 +107,8 @@ class IslandoraBreadcrumbBuilder implements BreadcrumbBuilderInterface {
 
     // Find the next in the chain, if there are any.
     if ($entity->hasField($this->config->get('referenceField')) &&
-      !$entity->get($this->config->get('referenceField'))->isEmpty()) {
+      !$entity->get($this->config->get('referenceField'))->isEmpty() &&
+      $entity->get($this->config->get('referenceField'))->entity instanceof EntityInterface) {
       $this->walkMembership($entity->get($this->config->get('referenceField'))->entity, $crumbs);
     }
   }

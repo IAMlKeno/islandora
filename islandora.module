@@ -18,9 +18,9 @@ use Drupal\Component\Plugin\Exception\PluginNotFoundException;
 use Drupal\Core\Entity\Display\EntityViewDisplayInterface;
 use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Site\Settings;
 use Drupal\Core\Url;
 use Drupal\islandora\Form\IslandoraSettingsForm;
-use Drupal\islandora\GeminiLookup;
 use Drupal\node\NodeInterface;
 use Drupal\media\MediaInterface;
 use Drupal\file\FileInterface;
@@ -41,31 +41,6 @@ function islandora_help($route_name, RouteMatchInterface $route_match) {
 
     default:
   }
-}
-
-/**
- * Implements hook_rdf_namespaces().
- */
-function islandora_rdf_namespaces() {
-  // Yes, it's amazing, rdf is not registered by default!
-  return [
-    'ldp'  => 'http://www.w3.org/ns/ldp#',
-    'dc11' => 'http://purl.org/dc/elements/1.1/',
-    'dcterms' => 'http://purl.org/dc/terms/',
-    'nfo' => 'http://www.semanticdesktop.org/ontologies/2007/03/22/nfo/v1.1/',
-    'ebucore' => 'http://www.ebu.ch/metadata/ontologies/ebucore/ebucore#',
-    'fedora' => 'http://fedora.info/definitions/v4/repository#',
-    'owl' => 'http://www.w3.org/2002/07/owl#',
-    'ore' => 'http://www.openarchives.org/ore/terms/',
-    'rdf' => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
-    'islandora' => 'http://islandora.ca/',
-    'pcdm' => 'http://pcdm.org/models#',
-    'use' => 'http://pcdm.org/use#',
-    'iana' => 'http://www.iana.org/assignments/relation/',
-    'premis' => 'http://www.loc.gov/premis/rdf/v1#',
-    'premis3' => 'http://www.loc.gov/premis/rdf/v3/',
-    'co' => 'http://purl.org/co/',
-  ];
 }
 
 /**
@@ -107,7 +82,6 @@ function islandora_node_delete(NodeInterface $node) {
  */
 function islandora_media_insert(MediaInterface $media) {
   $utils = \Drupal::service('islandora.utils');
-
   // Execute index reactions.
   $utils->executeMediaReactions('\Drupal\islandora\Plugin\ContextReaction\IndexReaction', $media);
 
@@ -121,6 +95,8 @@ function islandora_media_insert(MediaInterface $media) {
       $media
     );
   }
+  // Wait until the media insert is complete, then fire file derivatives.
+  drupal_register_shutdown_function('_islandora_fire_media_file_derivative_reaction', $media);
 }
 
 /**
@@ -137,7 +113,6 @@ function islandora_media_update(MediaInterface $media) {
 
   // Execute index reactions.
   $utils->executeMediaReactions('\Drupal\islandora\Plugin\ContextReaction\IndexReaction', $media);
-
   // Does it have a source field?
   $source_field = $media_source_service->getSourceFieldName($media->bundle());
   if (empty($source_field)) {
@@ -148,7 +123,6 @@ function islandora_media_update(MediaInterface $media) {
   if ($media->get($source_field)->equals($media->original->get($source_field))) {
     return;
   }
-
   // If it has a parent node...
   $node = $utils->getParentNode($media);
   if ($node) {
@@ -158,6 +132,7 @@ function islandora_media_update(MediaInterface $media) {
       $node,
       $media
     );
+    $utils->executeMediaReactions('\Drupal\islandora\Plugin\ContextReaction\DerivativeFileReaction', $media);
   }
 }
 
@@ -169,6 +144,25 @@ function islandora_media_delete(MediaInterface $media) {
 
   // Execute delete reactions.
   $utils->executeMediaReactions('\Drupal\islandora\Plugin\ContextReaction\DeleteReaction', $media);
+}
+
+/**
+ * Helper to fire media derivative file reactions after a media 'insert'.
+ *
+ * This function should not be called on its own; it exists as a workaround to
+ * being unable to fire media events after a media insert operation. This
+ * behaviour will eventually be replaced by event listeners once these are
+ * implemented in Drupal 9.
+ *
+ * @param \Drupal\Core\Media\MediaInterface $media
+ *   The media that was just inserted.
+ *
+ * @see https://www.drupal.org/project/drupal/issues/2551893
+ */
+function _islandora_fire_media_file_derivative_reaction(MediaInterface $media) {
+  $utils = \Drupal::service('islandora.utils');
+  // Execute derivative file reactions.
+  $utils->executeMediaReactions('\Drupal\islandora\Plugin\ContextReaction\DerivativeFileReaction', $media);
 }
 
 /**
@@ -186,7 +180,7 @@ function islandora_file_insert(FileInterface $file) {
  */
 function islandora_file_update(FileInterface $file) {
   // Exit early if unchanged.
-  if ($file->filehash['sha1'] == $file->original->filehash['sha1']) {
+  if ($file->filehash != NULL && $file->original->filehash != NULL && $file->filehash['sha1'] == $file->original->filehash['sha1']) {
     return;
   }
 
@@ -274,10 +268,11 @@ function islandora_jsonld_alter_normalized_array(EntityInterface $entity, array 
 function islandora_entity_view_mode_alter(&$view_mode, EntityInterface $entity) {
   // Change the view mode based on user input from a 'view_mode_alter'
   // ContextReaction.
+  $entity_type = $entity->getEntityType()->id();
   $storage = \Drupal::service('entity_type.manager')->getStorage('entity_view_mode');
   $context_manager = \Drupal::service('context.manager');
-  $current_entity = \Drupal::routeMatch()->getParameter('node');
-  $current_id = ($current_entity instanceof NodeInterface) ? $current_entity->id() : NULL;
+  $current_entity = \Drupal::routeMatch()->getParameter($entity_type);
+  $current_id = ($current_entity instanceof NodeInterface || $current_entity instanceof MediaInterface) ? $current_entity->id() : NULL;
   if (isset($current_id) && $current_id == $entity->id()) {
     foreach ($context_manager->getActiveReactions('\Drupal\islandora\Plugin\ContextReaction\ViewModeAlterReaction') as $reaction) {
       // Construct the new view mode's machine name.
@@ -402,16 +397,17 @@ function islandora_form_block_form_alter(&$form, FormStateInterface $form_state,
   // /admin/structure/context instead if you want to use these conditions
   // to alter block layout.
   unset($form['visibility']['content_entity_type']);
-  unset($form['visibility']['parent_node_has_term']);
-  unset($form['visibility']['node_had_namespace']);
-  unset($form['visibility']['media_has_term']);
   unset($form['visibility']['file_uses_filesystem']);
-  unset($form['visibility']['node_has_term']);
-  unset($form['visibility']['node_has_parent']);
-  unset($form['visibility']['media_uses_filesystem']);
   unset($form['visibility']['media_has_mimetype']);
-  unset($form['visibility']['node_is_islandora_object']);
+  unset($form['visibility']['media_has_term']);
   unset($form['visibility']['media_is_islandora_media']);
+  unset($form['visibility']['media_uses_filesystem']);
+  unset($form['visibility']['node_had_namespace']);
+  unset($form['visibility']['node_has_parent']);
+  unset($form['visibility']['node_has_term']);
+  unset($form['visibility']['node_is_islandora_object']);
+  unset($form['visibility']['node_referenced_by_node']);
+  unset($form['visibility']['parent_node_has_term']);
 }
 
 /**
@@ -445,27 +441,54 @@ function islandora_entity_view(array &$build, EntityInterface $entity, EntityVie
   // Ensure the entity matches the route.
   if ($entity === $route_match_item) {
     if ($display->getComponent('field_gemini_uri')) {
-      $gemini = \Drupal::service('islandora.gemini.lookup');
-      if ($gemini instanceof GeminiLookup) {
-        $fedora_uri = $gemini->lookup($entity);
-        if (!is_null($fedora_uri)) {
-          $build['field_gemini_uri'] = [
-            '#type' => 'container',
-            '#attributes' => [
-              'id' => 'field-gemini-uri',
-            ],
-            'internal_label' => [
-              '#type' => 'item',
-              '#title' => t('Fedora URI'),
-              'internal_uri' => [
-                '#type' => 'link',
-                '#title' => t("@url", ['@url' => $fedora_uri]),
-                '#url' => Url::fromUri($fedora_uri),
-              ],
-            ],
-          ];
+      $mapper = \Drupal::service('islandora.entity_mapper');
+      $flysystem_config = Settings::get('flysystem');
+      $fedora_root = $flysystem_config['fedora']['config']['root'];
+      $fedora_root = rtrim($fedora_root, '/');
+
+      if ($entity->getEntityTypeId() == 'media') {
+        // Check if the source file is in Fedora or not.
+        $media_source_service = \Drupal::service('islandora.media_source_service');
+        $source_file = $media_source_service->getSourceFile($entity);
+        $uri = $source_file->getFileUri();
+        $scheme = \Drupal::service('stream_wrapper_manager')->getScheme($uri);
+        $flysystem_config = Settings::get('flysystem');
+
+        // Use the file's path if it's in fedora.
+        // Otherwise do the UUID -> pair tree thang.
+        if (isset($flysystem_config[$scheme]) && $flysystem_config[$scheme]['driver'] == 'fedora') {
+          $parts = parse_url($uri);
+          $path = $parts['host'] . $parts['path'];
         }
+        else {
+          $path = $mapper->getFedoraPath($source_file->uuid());
+        }
+        $path = trim($path, '/');
+        $fedora_uri = "$fedora_root/$path/fcr:metadata";
       }
+      else {
+        // All non-media entities do the UUID -> pair tree thang.
+        $path = $mapper->getFedoraPath($entity->uuid());
+        $path = trim($path, '/');
+        $fedora_uri = "$fedora_root/$path";
+      }
+
+      // Stuff the fedora url into the pseudo field.
+      $build['field_gemini_uri'] = [
+        '#type' => 'container',
+        '#attributes' => [
+          'id' => 'field-gemini-uri',
+        ],
+        'internal_label' => [
+          '#type' => 'item',
+          '#title' => t('Fedora URI'),
+          'internal_uri' => [
+            '#type' => 'link',
+            '#title' => t("@url", ['@url' => $fedora_uri]),
+            '#url' => Url::fromUri($fedora_uri),
+          ],
+        ],
+      ];
     }
   }
 }

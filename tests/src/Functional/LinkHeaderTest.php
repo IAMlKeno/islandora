@@ -61,13 +61,13 @@ class LinkHeaderTest extends IslandoraFunctionalTestBase {
       'type' => $this->testType->id(),
       'title' => 'Referencer',
       'field_member_of' => [$this->referenced->id()],
-      'field_tags' => [$this->imageTerm->id()],
+      'field_model' => [$this->imageTerm->id()],
     ]);
     $this->referencer->save();
 
     list($this->file, $this->media) = $this->makeMediaAndFile($account);
     $this->media->set('field_media_of', $this->referencer);
-    $this->media->set('field_tags', $this->preservationMasterTerm);
+    $this->media->set('field_media_use', $this->preservationMasterTerm);
     $this->media->save();
   }
 
@@ -135,15 +135,14 @@ class LinkHeaderTest extends IslandoraFunctionalTestBase {
   public function testMediaLinkHeaders() {
 
     // Get the file to check its url in the response headers.
-    $file_url = $this->file->url('canonical', ['absolute' => TRUE]);
+    $file_url = $this->file->createFileUrl(FALSE);
     $rest_url = Url::fromRoute('islandora.media_source_update', ['media' => $this->media->id()])
       ->setAbsolute()
       ->toString();
-    $media_url = $this->media->url('canonical', ['absolute' => TRUE]);
+    $media_url = $this->media->toUrl('canonical', ['absolute' => TRUE])->toString();
 
     // Perform a GET request as anonymous.
     $this->drupalGet($media_url, [], ['Cache-Control: no-cache']);
-
     // Check link headers.
     $this->assertTrue(
       $this->validateLinkHeaderWithUrl('describes', $file_url, '', 'text/plain') == 1,

@@ -5,6 +5,7 @@ namespace Drupal\islandora\EventGenerator;
 use Drupal\Core\Access\AccessResult;
 use Drupal\Core\Action\ConfigurableActionBase;
 use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
@@ -21,6 +22,7 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
  * Configurable action base for actions that publish messages to queues.
  */
 abstract class EmitEvent extends ConfigurableActionBase implements ContainerFactoryPluginInterface {
+  use StringTranslationTrait;
 
   /**
    * Current user.
@@ -56,6 +58,13 @@ abstract class EmitEvent extends ConfigurableActionBase implements ContainerFact
    * @var \Symfony\Component\EventDispatcher\EventDispatcherInterface
    */
   protected $eventDispatcher;
+
+  /**
+   * The messenger.
+   *
+   * @var \Drupal\Core\Messenger\MessengerInterface
+   */
+  protected $messenger;
 
   /**
    * Constructs a EmitEvent action.
@@ -138,10 +147,10 @@ abstract class EmitEvent extends ConfigurableActionBase implements ContainerFact
     catch (\RuntimeException $e) {
       // Notify the user the event couldn't be generated and abort.
       \Drupal::logger('islandora')->error(
-        t('Error generating event: @msg', ['@msg' => $e->getMessage()])
+        $this->t('Error generating event: @msg', ['@msg' => $e->getMessage()])
       );
-      drupal_set_message(
-        t('Error generating event: @msg', ['@msg' => $e->getMessage()]),
+      $this->messenger->addMessage(
+        $this->t('Error generating event: @msg', ['@msg' => $e->getMessage()]),
         'error'
       );
       return;
@@ -161,8 +170,8 @@ abstract class EmitEvent extends ConfigurableActionBase implements ContainerFact
       );
 
       // Notify user.
-      drupal_set_message(
-        t('Error publishing message: @msg',
+      $this->messenger->addMessage(
+        $this->t('Error publishing message: @msg',
           ['@msg' => $e->getMessage()]
         ),
         'error'
@@ -193,22 +202,22 @@ abstract class EmitEvent extends ConfigurableActionBase implements ContainerFact
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $form['queue'] = [
       '#type' => 'textfield',
-      '#title' => t('Queue'),
+      '#title' => $this->t('Queue'),
       '#default_value' => $this->configuration['queue'],
       '#required' => TRUE,
       '#rows' => '8',
-      '#description' => t('Name of queue to which event is published'),
+      '#description' => $this->t('Name of queue to which event is published'),
     ];
     $form['event'] = [
       '#type' => 'select',
-      '#title' => t('Event type'),
+      '#title' => $this->t('Event type'),
       '#default_value' => $this->configuration['event'],
-      '#description' => t('Type of event to emit'),
+      '#description' => $this->t('Type of event to emit'),
       '#options' => [
-        'Create' => t('Create'),
-        'Update' => t('Update'),
-        'Delete' => t('Delete'),
-        'Generate Derivative' => t('Generate Derivative'),
+        'Create' => $this->t('Create'),
+        'Update' => $this->t('Update'),
+        'Delete' => $this->t('Delete'),
+        'Generate Derivative' => $this->t('Generate Derivative'),
       ],
     ];
     return $form;

@@ -1,7 +1,7 @@
 # ![Islandora](https://cloud.githubusercontent.com/assets/2371345/25624809/f95b0972-2f30-11e7-8992-a8f135402cdc.png) Islandora
 
 [![Minimum PHP Version](https://img.shields.io/badge/php-%3E%3D%207.2-8892BF.svg?style=flat-square)](https://php.net/)
-[![Build Status](https://travis-ci.org/Islandora/islandora.png?branch=8.x-1.x)](https://travis-ci.com/Islandora/islandora)
+[![Build Status](https://github.com/islandora/islandora/actions/workflows/build-8.x-1.x.yml/badge.svg)](https://github.com/Islandora/islandora/actions)
 [![Contribution Guidelines](http://img.shields.io/badge/CONTRIBUTING-Guidelines-blue.svg)](./CONTRIBUTING.md)
 [![LICENSE](https://img.shields.io/badge/license-GPLv2-blue.svg?style=flat-square)](./LICENSE)
 [![codecov](https://codecov.io/gh/Islandora/islandora/branch/8.x-1.x/graph/badge.svg)](https://codecov.io/gh/Islandora/islandora)
@@ -51,7 +51,7 @@ It also requires the following PHP libraries:
 
 ## Installation
 
-For a full digital repository solution, see our [installation documentation](https://islandora.github.io/documentation/installation/).
+For a full digital repository solution, see our [installation documentation](https://islandora.github.io/documentation/installation/component_overview/).
 
 To download/enable just this module, use the following from the command line:
 
@@ -117,3 +117,4 @@ We recommend using the [islandora-playbook](https://github.com/Islandora-Devops/
 ## License
 
 [GPLv2](http://www.gnu.org/licenses/gpl-2.0.txt)
+

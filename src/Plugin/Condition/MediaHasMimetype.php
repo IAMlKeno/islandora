@@ -101,11 +101,11 @@ class MediaHasMimetype extends ConditionPluginBase implements ContainerFactoryPl
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $form['mimetypes'] = [
       '#type' => 'textfield',
-      '#title' => t('Mime types'),
+      '#title' => $this->t('Mime types'),
       '#default_value' => $this->configuration['mimetypes'],
       '#required' => TRUE,
       '#maxlength' => 256,
-      '#description' => t('Comma-delimited list of Mime types (e.g. image/jpeg, video/mp4, etc...) that trigger the condition.'),
+      '#description' => $this->t('Comma-delimited list of Mime types (e.g. image/jpeg, video/mp4, etc...) that trigger the condition.'),
     ];
     return parent::buildConfigurationForm($form, $form_state);
   }
@@ -151,7 +151,7 @@ class MediaHasMimetype extends ConditionPluginBase implements ContainerFactoryPl
       $mimetypes = explode(',', str_replace(' ', '', $this->configuration['mimetypes']));
       foreach ($media as $medium) {
         $file = $this->mediaSource->getSourceFile($medium);
-        if (in_array($file->getMimeType(), $mimetypes)) {
+        if ($file && in_array($file->getMimeType(), $mimetypes)) {
           return TRUE;
         }
       }
